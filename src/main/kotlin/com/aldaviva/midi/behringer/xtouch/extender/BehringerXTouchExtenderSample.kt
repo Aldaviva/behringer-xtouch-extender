@@ -65,8 +65,6 @@ fun main() {
     controller.open()
     println("Connected.")
 
-    val subtitle = "       Artemis Spaceship Bridge Simulator                    "
-
     for (trackId in 1..8) {
         controller.rotateKnob(trackId, 0.0)
         for (buttonType in IlluminatedButtonType.values()) {
@@ -83,8 +81,7 @@ fun main() {
         controller.setText(
             trackId,
             "Track $trackId",
-//            ".".repeat(trackId - 1),
-            subtitle.substring((trackId-1)*7, (trackId)*7),
+            ".".repeat(trackId - 1),
             ScribbleStripTextColor.BLACK,
             ScribbleStripTextColor.WHITE,
             ScribbleStripBackgroundColor.values()[trackId - 1]

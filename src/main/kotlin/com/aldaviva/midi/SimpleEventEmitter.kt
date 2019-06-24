@@ -32,7 +32,6 @@ class SimpleEventEmitter<T> {
 
     fun unregisterAll() {
         listeners.clear()
-
     }
 
 }

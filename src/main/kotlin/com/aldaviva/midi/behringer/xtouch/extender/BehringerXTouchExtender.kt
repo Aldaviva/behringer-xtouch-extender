@@ -7,10 +7,30 @@ import kotlin.math.roundToInt
 /**
  * Behringer X-Touch Extender
  *
- * <h3>Links</h3>
- * <ul><li><a href="https://www.behringer.com/Categories/Behringer/Computer-Audio/Desktop-Controllers/X-TOUCH-EXTENDER/p/P0CCR#googtrans(en|en)">Product page</a></li>
- * <li><a href="https://www.behringer.com/Categories/Behringer/Computer-Audio/Desktop-Controllers/X-TOUCH-EXTENDER/p/P0CCR/Downloads#googtrans(en|en)">Downloads</a></li>
- * <li><a href="https://media63.music-group.com/media/sys_master/hd3/h51/8849820287006.pdf">Quick Start Guide</a></li></ul>
+ * ## Requirements
+ * - Ensure the device appears as a MIDI device on your computer, either over USB or RTP (Ethernet)
+ * - Device must be in Ctrl or CtrlRel mode (to change, hold Track 1 Select while powering it on)
+ *
+ * ## Sample usage
+ * ```
+ * val controlSurface: MidiControlSurface = BehringerXTouchExtender(MidiControlMode.RELATIVE)
+ * controlSurface.use {
+ *     controlSurface.open()
+ *     controlSurface.listenForValueChanges(object : EventListener<MidiEventFromDevice>() {
+ *         override fun onEvent(event: MidiEventFromDevice) {
+ *             if (event is ButtonPressed && event.buttonType == PressableButtonType.RECORD) {
+ *                 controlSurface.setButtonLight(event.trackId, IlluminatedButtonType.RECORD, IlluminatedButtonState.ON)
+ *             }
+ *         }
+ *     })
+ *     println("Press a REC button to turn on its LED")
+ * }
+ * ```
+ *
+ * ## OEM Links
+ * - [Product page](https://www.behringer.com/Categories/Behringer/Computer-Audio/Desktop-Controllers/X-TOUCH-EXTENDER/p/P0CCR#googtrans(en|en))
+ * - [Downloads](https://www.behringer.com/Categories/Behringer/Computer-Audio/Desktop-Controllers/X-TOUCH-EXTENDER/p/P0CCR/Downloads#googtrans(en|en))
+ * - [Quick Start Guide](https://media63.music-group.com/media/sys_master/hd3/h51/8849820287006.pdf)
  */
 class BehringerXTouchExtender(private val controlMode: MidiControlMode) : MidiControlSurface, Receiver {
     private var receiverDevice: MidiDevice? = null
@@ -25,10 +45,15 @@ class BehringerXTouchExtender(private val controlMode: MidiControlMode) : MidiCo
      * Thanks https://community.musictribe.com/t5/Recording/X-Touch-Extender-Scribble-Strip-Midi-Sysex-Command/td-p/251306
      */
     private val deviceId = 0x15
+    private val trackCount = 8
 
+    /**
+     * @throws DeviceNotFoundException if the Behringer X-Touch Controller is not connected to the computer or installed correctly
+     * @throws MidiUnavailableException if the device is out of resources
+     */
     override fun open() {
-        if (receiverDevice?.isOpen == true || transmitterDevice?.isOpen == true) {
-            throw IllegalStateException("Already open")
+        if (isOpen) {
+            throw IllegalStateException("This MidiControlSurface instance has already been opened. Call MidiControlSurface.isOpen")
         }
 
         val availableDevices = MidiSystem.getMidiDeviceInfo()
@@ -58,11 +83,17 @@ class BehringerXTouchExtender(private val controlMode: MidiControlMode) : MidiCo
         transmitterDevice!!.transmitter.receiver = this
     }
 
+    override val isOpen: Boolean
+        get() = receiverDevice?.isOpen == true || transmitterDevice?.isOpen == true
+
     override fun listenForValueChanges(eventListener: EventListener<MidiEventFromDevice>) {
         emitterForEventsFromDevice.register(eventListener)
     }
 
     override fun setButtonLight(trackId: Int, buttonType: IlluminatedButtonType, illuminatedButtonState: IlluminatedButtonState) {
+        assertOpen()
+        assertTrackIdInBounds(trackId)
+
         val noteId = trackId - 1 + when (buttonType) {
             IlluminatedButtonType.RECORD -> 8
             IlluminatedButtonType.SOLO -> 16
@@ -78,12 +109,25 @@ class BehringerXTouchExtender(private val controlMode: MidiControlMode) : MidiCo
     }
 
     override fun rotateKnob(trackId: Int, distanceFromMinimumValue: Double) {
+        assertOpen()
+        assertTrackIdInBounds(trackId)
+        if (distanceFromMinimumValue !in 0.0..1.0) {
+            throw IllegalArgumentException("Parameter distanceFromMinimumValue value is out of bounds. Valid values are in the range [0.0, 1.0].")
+        }
+
         val controlId = 80 + trackId - 1
         val controlValue = (distanceFromMinimumValue * 127).roundToInt()
         midiOutToDevice?.send(ShortMessage(ShortMessage.CONTROL_CHANGE, controlId, controlValue), currentTimestamp)
     }
 
+
     override fun moveSlider(trackId: Int, distanceFromMinimumValue: Double) {
+        assertOpen()
+        assertTrackIdInBounds(trackId)
+        if (distanceFromMinimumValue !in 0.0..1.0) {
+            throw IllegalArgumentException("Parameter distanceFromMinimumValue value is out of bounds. Valid values are in the range [0.0, 1.0].")
+        }
+
         val controlId = 70 + trackId - 1
         val controlValue = (distanceFromMinimumValue * 127).roundToInt()
         midiOutToDevice?.send(ShortMessage(ShortMessage.CONTROL_CHANGE, controlId, controlValue), currentTimestamp)
@@ -97,6 +141,10 @@ class BehringerXTouchExtender(private val controlMode: MidiControlMode) : MidiCo
         bottomTextColor: ScribbleStripTextColor,
         backgroundColor: ScribbleStripBackgroundColor
     ) {
+        assertOpen()
+        assertTrackIdInBounds(trackId)
+
+        val textColumnCount = 7
         val payload = ByteArray(23)
         payload[0] = SysexMessage.SYSTEM_EXCLUSIVE.toByte()
         payload[1] = 0x00.toByte()
@@ -108,9 +156,9 @@ class BehringerXTouchExtender(private val controlMode: MidiControlMode) : MidiCo
         payload[7] = (backgroundColor.ordinal
                 or (encodeTextColor(topTextColor) shl 4)
                 or (encodeTextColor(bottomTextColor) shl 5)).toByte()
-        for (column in 0..6) {
+        for (column in 0 until textColumnCount) {
             payload[8 + column] = (topText.elementAtOrNull(column) ?: ' ').toByte()
-            payload[8 + column + 7] = (bottomText.elementAtOrNull(column) ?: ' ').toByte()
+            payload[8 + column + textColumnCount] = (bottomText.elementAtOrNull(column) ?: ' ').toByte()
         }
         payload[22] = SysexMessage.SPECIAL_SYSTEM_EXCLUSIVE.toByte()
 
@@ -125,13 +173,13 @@ class BehringerXTouchExtender(private val controlMode: MidiControlMode) : MidiCo
     }
 
     /**
-     * Called whenever the MIDI device sends a message to this library
+     * Called whenever the MIDI device sends a message to this library. Don't call this to send anything, use midiOutToDevice.send() for that.
      */
     override fun send(message: MidiMessage?, timeStamp: Long) {
         if (message == null) return
-        val verbId = message.message[0].toInt() and 0xFF
-        val noteId = message.message[1].toInt() and 0xFF
-        val rawValue = message.message[2].toInt() and 0xFF
+        val verbId = message.message[0].toUnsignedInt()
+        val noteId = message.message[1].toUnsignedInt()
+        val rawValue = message.message[2].toUnsignedInt()
         val eventToEmit: MidiEventFromDevice? = when (verbId) {
             ShortMessage.NOTE_ON -> onNoteOnMessage(noteId, rawValue)
             ShortMessage.CONTROL_CHANGE -> onControlChangeMessage(noteId, rawValue)
@@ -147,27 +195,27 @@ class BehringerXTouchExtender(private val controlMode: MidiControlMode) : MidiCo
         val trackId: Int
         val buttonType: PressableButtonType
         when (noteId) {
-            in 0x00..0x07 -> {
+            in 0x00 until 0x00 + trackCount -> {
                 trackId = noteId - 0x00 + 1
                 buttonType = PressableButtonType.ROTARY_ENCODER
             }
-            in 0x08..0x0F -> {
+            in 0x08 until 0x08 + trackCount -> {
                 trackId = noteId - 0x08 + 1
                 buttonType = PressableButtonType.RECORD
             }
-            in 0x10..0x17 -> {
+            in 0x10 until 0x10 + trackCount -> {
                 trackId = noteId - 0x10 + 1
                 buttonType = PressableButtonType.SOLO
             }
-            in 0x18..0x1F -> {
+            in 0x18 until 0x18 + trackCount -> {
                 trackId = noteId - 0x18 + 1
                 buttonType = PressableButtonType.MUTE
             }
-            in 0x20..0x27 -> {
+            in 0x20 until 0x20 + trackCount -> {
                 trackId = noteId - 0x20 + 1
                 buttonType = PressableButtonType.SELECT
             }
-            in 0x68..0x6F -> {
+            in 0x68 until 0x68 + trackCount -> {
                 trackId = noteId - 0x68 + 1
                 buttonType = PressableButtonType.FADER
             }
@@ -183,7 +231,7 @@ class BehringerXTouchExtender(private val controlMode: MidiControlMode) : MidiCo
 
     private fun onControlChangeMessage(noteId: Int, rawValue: Int): MidiEventFromDevice? {
         return when (noteId) {
-            in 80..87 -> {
+            in 80 until 80 + trackCount -> {
                 val trackId = noteId - 80 + 1
                 when (controlMode) {
                     MidiControlMode.RELATIVE -> {
@@ -197,7 +245,7 @@ class BehringerXTouchExtender(private val controlMode: MidiControlMode) : MidiCo
                     MidiControlMode.ABSOLUTE -> KnobRotatedAbsolute(trackId, rawValue / 127.0)
                 }
             }
-            in 70..77 -> SliderMoved(noteId - 70 + 1, rawValue / 127.0)
+            in 70 until 70 + trackCount -> SliderMoved(noteId - 70 + 1, rawValue / 127.0)
             else -> null
         }
     }
@@ -212,5 +260,17 @@ class BehringerXTouchExtender(private val controlMode: MidiControlMode) : MidiCo
         midiOutToDevice = null
         receiverDevice = null
         transmitterDevice = null
+    }
+
+    private fun assertOpen() {
+        if (!isOpen) {
+            throw IllegalStateException("MidiControlSurface class instance has not been opened. Call MidiControlSurface.open() before calling this method.")
+        }
+    }
+
+    private fun assertTrackIdInBounds(trackId: Int) {
+        if (trackId !in 1..trackCount) {
+            throw IllegalArgumentException("Parameter trackId value is out of bounds. Valid values are in the range [1, $trackCount].")
+        }
     }
 }
