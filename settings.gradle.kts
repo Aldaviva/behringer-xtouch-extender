@@ -1,0 +1,1 @@
+rootProject.name = "behringer-xtouch-extender"
