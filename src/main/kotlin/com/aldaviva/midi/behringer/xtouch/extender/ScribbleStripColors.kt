@@ -1,7 +1,7 @@
 package com.aldaviva.midi.behringer.xtouch.extender
 
 enum class ScribbleStripTextColor {
-    WHITE, BLACK
+    LIGHT, DARK
 }
 
 enum class ScribbleStripBackgroundColor {

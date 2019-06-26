@@ -16,7 +16,7 @@ import kotlin.math.roundToInt
  * val controlSurface: MidiControlSurface = BehringerXTouchExtender(MidiControlMode.RELATIVE)
  * controlSurface.use {
  *     controlSurface.open()
- *     controlSurface.listenForValueChanges(object : EventListener<MidiEventFromDevice>() {
+ *     controlSurface.registerForEvents(object : EventListener<MidiEventFromDevice>() {
  *         override fun onEvent(event: MidiEventFromDevice) {
  *             if (event is ButtonPressed && event.buttonType == PressableButtonType.RECORD) {
  *                 controlSurface.setButtonLight(event.trackId, IlluminatedButtonType.RECORD, IlluminatedButtonState.ON)
@@ -49,7 +49,8 @@ class BehringerXTouchExtender(private val controlMode: MidiControlMode) : MidiCo
 
     /**
      * @throws DeviceNotFoundException if the Behringer X-Touch Controller is not connected to the computer or installed correctly
-     * @throws MidiUnavailableException if the device is out of resources
+     * @throws MidiUnavailableException if the device is out of resources, for example, if another program on your computer is already
+     * using the device
      */
     override fun open() {
         if (isOpen) {
@@ -86,7 +87,7 @@ class BehringerXTouchExtender(private val controlMode: MidiControlMode) : MidiCo
     override val isOpen: Boolean
         get() = receiverDevice?.isOpen == true || transmitterDevice?.isOpen == true
 
-    override fun listenForValueChanges(eventListener: EventListener<MidiEventFromDevice>) {
+    override fun registerForEvents(eventListener: EventListener<MidiEventFromDevice>) {
         emitterForEventsFromDevice.register(eventListener)
     }
 
@@ -109,26 +110,25 @@ class BehringerXTouchExtender(private val controlMode: MidiControlMode) : MidiCo
     }
 
     override fun rotateKnob(trackId: Int, distanceFromMinimumValue: Double) {
-        assertOpen()
-        assertTrackIdInBounds(trackId)
-        if (distanceFromMinimumValue !in 0.0..1.0) {
-            throw IllegalArgumentException("Parameter distanceFromMinimumValue value is out of bounds. Valid values are in the range [0.0, 1.0].")
-        }
-
-        val controlId = 80 + trackId - 1
-        val controlValue = (distanceFromMinimumValue * 127).roundToInt()
-        midiOutToDevice?.send(ShortMessage(ShortMessage.CONTROL_CHANGE, controlId, controlValue), currentTimestamp)
+        changeControl(80, trackId, distanceFromMinimumValue)
     }
 
-
     override fun moveSlider(trackId: Int, distanceFromMinimumValue: Double) {
+        changeControl(70, trackId, distanceFromMinimumValue)
+    }
+
+    override fun setMeterLevel(trackId: Int, distanceFromMinimumValue: Double) {
+        changeControl(90, trackId, distanceFromMinimumValue)
+    }
+
+    private fun changeControl(track1ControlId: Int, trackId: Int, distanceFromMinimumValue: Double){
         assertOpen()
         assertTrackIdInBounds(trackId)
         if (distanceFromMinimumValue !in 0.0..1.0) {
-            throw IllegalArgumentException("Parameter distanceFromMinimumValue value is out of bounds. Valid values are in the range [0.0, 1.0].")
+            throw IllegalArgumentException("Parameter distanceFromMinimumValue value $distanceFromMinimumValue is out of bounds. Valid values are in the range [0.0, 1.0].")
         }
 
-        val controlId = 70 + trackId - 1
+        val controlId = track1ControlId + trackId - 1
         val controlValue = (distanceFromMinimumValue * 127).roundToInt()
         midiOutToDevice?.send(ShortMessage(ShortMessage.CONTROL_CHANGE, controlId, controlValue), currentTimestamp)
     }
@@ -167,8 +167,8 @@ class BehringerXTouchExtender(private val controlMode: MidiControlMode) : MidiCo
 
     private fun encodeTextColor(textColor: ScribbleStripTextColor): Int {
         return when (textColor) {
-            ScribbleStripTextColor.WHITE -> 0
-            ScribbleStripTextColor.BLACK -> 1
+            ScribbleStripTextColor.LIGHT -> 0
+            ScribbleStripTextColor.DARK -> 1
         }
     }
 

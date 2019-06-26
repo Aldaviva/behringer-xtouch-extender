@@ -13,7 +13,8 @@ interface MidiControlSurface : AutoCloseable {
 
     /**
      * @throws DeviceNotFoundException if the required MIDI devices can not be found
-     * @throws MidiUnavailableException if the device is out of resources
+     * @throws MidiUnavailableException if the device is out of resources, for example, if another program on your computer is already
+     * using the device
      */
     fun open()
 
@@ -29,7 +30,7 @@ interface MidiControlSurface : AutoCloseable {
      * @see KnobRotatedRelative
      * @see SliderMoved
      */
-    fun listenForValueChanges(eventListener: EventListener<MidiEventFromDevice>)
+    fun registerForEvents(eventListener: EventListener<MidiEventFromDevice>)
 
     /**
      * Turn an illuminated button on or off, or make it blink.
@@ -63,6 +64,17 @@ interface MidiControlSurface : AutoCloseable {
     fun moveSlider(trackId: Int, distanceFromMinimumValue: Double)
 
     /**
+     * Set the level of a meter. VU meters are a vertical strip of eight LEDs. The top one is red, followed by three orange, then four
+     * green. At most one LED can be illuminated at a time.
+     * @param trackId The number of the track or channel on the controller. There are eight tracks, numbered from `1` on the
+     * far left to `8` on the far right (1-indexed).
+     * @param distanceFromMinimumValue Which LED on the meter should be lit up. Pass a value in the range [0.0, 1.0], where `0.0` turns
+     * off all LEDs, and other values illuminate one of the eight LEDs from the bottom green LED (SIG) to the top red LED (CLIP) at
+     * `1.0`.
+     */
+    fun setMeterLevel(trackId: Int, distanceFromMinimumValue: Double)
+
+    /**
      * Print text onto LCD screens, like the scribble strips on each track. Each screen has room for two lines of 7 characters each.
      * @param trackId The number of the track or channel on the controller. There are eight tracks, numbered from `1` on the
      * far left to `8` on the far right (1-indexed).
@@ -72,12 +84,13 @@ interface MidiControlSurface : AutoCloseable {
      * @param bottomText The text to show in the second row of the screen. Can be at most 7 characters. Strings less than 7 characters
      * long will be left-aligned, and those more than 7 characters long will be truncated at the end.. Character set is limited to
      * ASCII. To leave the row empty, pass the empty string.
-     * @param topTextColor The color of the first row of text. `BLACK` will render dark text with a light background, and
-     * `WHITE` will render light text with a dark background. Both dark and light regions will have the hue from
+     * @param topTextColor The color of the first row of text. `DARK` will render dark text with a light background, and
+     * `LIGHT` will render light text with a dark background. Both dark and light regions will have the hue from
      * `backgroundColor`.
-     * @param bottomTextColor The color of the second row of text. `BLACK` will render dark text, and
-     * `WHITE` will render light text. Both dark and light regions will have the hue from `backgroundColor`.
-     * @param backgroundColor The background color of the LCD screen.
+     * @param bottomTextColor The color of the second row of text. `DARK` will render dark text, and
+     * `LIGHT` will render light text. Both dark and light regions will have the hue from `backgroundColor`.
+     * @param backgroundColor The background color of the LCD screen. Be aware that it's almost impossible to read the text when the
+     * this value is `BLACK`, even if the text color is specified as `LIGHT`.
      */
     fun setText(
         trackId: Int,

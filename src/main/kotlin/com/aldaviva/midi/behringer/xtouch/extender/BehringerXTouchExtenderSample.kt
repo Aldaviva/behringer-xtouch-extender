@@ -11,7 +11,7 @@ fun main() {
     val knobPositions: MutableMap<Int, Int> = mutableMapOf()
 
     val controller: MidiControlSurface = BehringerXTouchExtender(MidiControlMode.RELATIVE)
-    controller.listenForValueChanges(object : EventListener<MidiEventFromDevice>() {
+    controller.registerForEvents(object : EventListener<MidiEventFromDevice>() {
         override fun onEvent(event: MidiEventFromDevice) {
             when (event) {
                 is ButtonPressed -> {
@@ -82,8 +82,8 @@ fun main() {
             trackId,
             "Track $trackId",
             ".".repeat(trackId - 1),
-            ScribbleStripTextColor.BLACK,
-            ScribbleStripTextColor.WHITE,
+            ScribbleStripTextColor.DARK,
+            ScribbleStripTextColor.LIGHT,
             ScribbleStripBackgroundColor.values()[trackId - 1]
         )
 

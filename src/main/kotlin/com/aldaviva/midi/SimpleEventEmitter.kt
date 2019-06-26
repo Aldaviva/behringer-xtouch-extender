@@ -1,6 +1,6 @@
 package com.aldaviva.midi
 
-class SimpleEventEmitter<T> {
+internal class SimpleEventEmitter<T> {
 
     private val listeners = mutableListOf<EventListener<T>>()
     private val oneTimeListeners = mutableListOf<EventListener<T>>()
